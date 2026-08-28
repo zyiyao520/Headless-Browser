@@ -1,0 +1,81 @@
+name: Deploy to Unikraft Cloud
+on:
+  workflow_dispatch:
+    inputs:
+      memory:
+        description: Instance memory
+        required: true
+        default: 4Gi
+      scale_to_zero:
+        description: Enable stateful scale-to-zero
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: unikraft-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      UKC_TOKEN: ${{ secrets.UKC_TOKEN }}
+      UKC_METRO: ${{ vars.UKC_METRO || 'fra' }}
+      INSTANCE_NAME: ${{ vars.UKC_INSTANCE_NAME || 'cloak-browser' }}
+      VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
+      CLOAKBROWSER_LICENSE_KEY: ${{ secrets.CLOAKBROWSER_LICENSE_KEY }}
+      CLOAKSERVE_AUTH_TOKEN: ${{ secrets.CLOAKSERVE_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install KraftKit
+        run: |
+          set -Eeuo pipefail
+          curl --proto '=https' --tlsv1.2 -sSf https://get.kraftkit.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Verify credentials and quota
+        run: |
+          set -Eeuo pipefail
+          test -n "$UKC_TOKEN"
+          "$HOME/.local/bin/kraft" cloud quota -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" | tee quota.json
+      - name: Deploy
+        run: |
+          set -Eeuo pipefail
+          args=(
+            cloud deploy .
+            --metro "$UKC_METRO"
+            --token "$UKC_TOKEN"
+            --name "$INSTANCE_NAME"
+            --memory "${{ inputs.memory }}"
+            --port "443:6080/http+tls"
+            --restart on-failure
+            --rollout replace
+            --rollout-wait 90s
+            --env "VNC_PASSWORD=$VNC_PASSWORD"
+            --env "CLOAKSERVE_AUTH_TOKEN=$CLOAKSERVE_AUTH_TOKEN"
+          )
+          if [[ -n "$CLOAKBROWSER_LICENSE_KEY" ]]; then
+            args+=(--env "CLOAKBROWSER_LICENSE_KEY=$CLOAKBROWSER_LICENSE_KEY")
+          fi
+          if [[ "${{ inputs.scale_to_zero }}" == "true" ]]; then
+            args+=(--scale-to-zero on --scale-to-zero-stateful)
+          fi
+          "$HOME/.local/bin/kraft" "${args[@]}" | tee deployment.txt
+      - name: Instance status
+        run: |
+          "$HOME/.local/bin/kraft" cloud instance list --metro "$UKC_METRO" --token "$UKC_TOKEN"
+      - name: Logs on failure
+        if: failure()
+        run: |
+          "$HOME/.local/bin/kraft" cloud instance logs "$INSTANCE_NAME" --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+      - name: Upload metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unikraft-deployment
+          path: |
+            quota.json
+            deployment.txt
+          if-no-files-found: ignore
+          retention-days: 7

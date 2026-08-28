@@ -1,0 +1,38 @@
+name: Validate
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/entrypoint.sh
+          bash -n scripts/healthcheck.sh
+          bash -n scripts/open-tunnel.sh
+      - name: Build OCI image
+        run: docker build --tag headless-browser:test .
+      - name: Smoke test container
+        run: |
+          set -Eeuo pipefail
+          docker run -d --name browser-test \
+            --shm-size=256m \
+            -p 16080:6080 \
+            -p 19222:9222 \
+            headless-browser:test
+          trap 'docker logs browser-test || true; docker rm -f browser-test || true' EXIT
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:16080/vnc.html >/dev/null && \
+               curl -fsS http://127.0.0.1:19222/json/version >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
