@@ -1,0 +1,101 @@
+name: Deploy Visual Chromium CDP
+
+on:
+  workflow_dispatch:
+    inputs:
+      cleanup_old_image:
+        description: Delete the old headless baseline image before building
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-browser-deploy
+  cancel-in-progress: true
+
+env:
+  UKC_TOKEN: ${{ secrets.UKC_TOKEN }}
+  UKC_METRO: ${{ vars.UKC_METRO || 'fra' }}
+  BOOTSTRAP_ADMIN_TOKEN: ${{ secrets.CDP_BOOTSTRAP_ADMIN_TOKEN }}
+  KRAFTKIT_VERSION: "0.12.15"
+  KRAFTKIT_NO_CHECK_UPDATES: "true"
+  KRAFTKIT_NO_WARN_CLOUD_DEPRECATION: "1"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install KraftKit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          a=kraft_${KRAFTKIT_VERSION}_linux_amd64.tar.gz
+          u=https://github.com/unikraft/kraftkit/releases/download/v${KRAFTKIT_VERSION}/$a
+          d=$(mktemp -d)
+          curl -fL --retry 3 -o "$d/$a" "$u"
+          tar -xzf "$d/$a" -C "$d"
+          install -d "$HOME/.local/bin"
+          install -m 755 "$(find "$d" -type f -name kraft -perm -111 | head -1)" "$HOME/.local/bin/kraft"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Remove previous test resources and image
+        shell: bash
+        run: |
+          set +e
+          kraft cloud instance remove visual-chromium-cdp --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+          for i in $(seq 1 24); do
+            v=$(kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+            echo "$v"
+            echo "$v" | grep -q '"state":"mounted"' || break
+            sleep 5
+          done
+          if [[ "${{ inputs.cleanup_old_image }}" == "true" ]]; then
+            kraft cloud image delete voss/baseline-chromium-cdp-auth --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+            kraft cloud image delete voss/visual-chromium-cdp --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+            sleep 60
+          fi
+      - name: Ensure persistent volume
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          j=$(kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+          echo "$j"
+          if ! echo "$j" | grep -Fq '"name":"chromium-cdp-auth-data"'; then
+            kraft cloud volume create --name chromium-cdp-auth-data --size 256Mi --metro "$UKC_METRO" --token "$UKC_TOKEN"
+          fi
+      - name: Build and deploy visual browser
+        working-directory: deploy/visual-cdp
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          kraft cloud deploy . \
+            --metro "$UKC_METRO" \
+            --token "$UKC_TOKEN" \
+            --name visual-chromium-cdp \
+            --memory 4Gi \
+            --port '443:6080/http+tls' \
+            --port '10000:8080/tls' \
+            --volume 'chromium-cdp-auth-data:/app/data' \
+            --env "BOOTSTRAP_ADMIN_TOKEN=$BOOTSTRAP_ADMIN_TOKEN" \
+            --restart on-failure \
+            --rollout remove_sequential \
+            --rollout-wait 90s \
+            --output json | tee "$GITHUB_WORKSPACE/visual-deployment.json"
+      - name: Capture status and bounded logs
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          kraft cloud instance get visual-chromium-cdp -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" | tee visual-instance.json
+          timeout 30s kraft cloud instance logs visual-chromium-cdp --metro "$UKC_METRO" --token "$UKC_TOKEN" > visual-instance.log 2>&1 || true
+          kraft cloud image list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" > visual-images.json 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: visual-browser-${{ github.run_id }}
+          path: visual-*
+          retention-days: 14
