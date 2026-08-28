@@ -227,7 +227,7 @@ jobs:
             --token "$UKC_TOKEN" \
             --name baseline-chromium-cdp-auth \
             --memory 2Gi \
-            --port '443:9223/http+tls' \
+            --port '443:8080/http+tls' \
             --volume "$volume:/app/data" \
             --env "BOOTSTRAP_ADMIN_TOKEN=$CDP_BOOTSTRAP_ADMIN_TOKEN" \
             --restart on-failure \
