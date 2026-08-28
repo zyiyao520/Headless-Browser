@@ -65,7 +65,7 @@ fi
 start_bg cloakserve cloakserve "${CLOAK_ARGS[@]}"
 
 for _ in $(seq 1 120); do
-  curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && break
+  curl --connect-timeout 1 --max-time 2 -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && break
   sleep 0.5
 done
 /usr/local/bin/browser-stack-healthcheck
