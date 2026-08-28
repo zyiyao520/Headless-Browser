@@ -41,14 +41,14 @@ jobs:
             -p 19222:9222 \
             headless-browser:test
           trap 'docker logs browser-test || true; docker rm -f browser-test || true' EXIT
-          for i in $(seq 1 90); do
+          for i in $(seq 1 240); do
             if curl --connect-timeout 1 --max-time 3 -fsS http://127.0.0.1:16080/vnc.html >/dev/null 2>&1 && \
                curl --connect-timeout 1 --max-time 3 -fsS http://127.0.0.1:19222/json/version >/dev/null 2>&1; then
               echo "Browser stack is ready"
               exit 0
             fi
             if (( i % 10 == 0 )); then
-              echo "Still waiting, attempt $i/90"
+              echo "Still waiting, attempt $i/240"
               docker ps --filter name=browser-test
               docker logs --tail 80 browser-test || true
               docker exec browser-test sh -lc '''
@@ -65,7 +65,7 @@ jobs:
             fi
             sleep 2
           done
-          echo "Browser stack did not become ready"
+          echo "Browser stack did not become ready within 12 minutes"
           docker inspect browser-test --format='{{json .State}}' || true
           docker logs browser-test || true
           docker exec browser-test sh -lc '''

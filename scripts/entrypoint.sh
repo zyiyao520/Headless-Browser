@@ -71,12 +71,30 @@ CLOAK_ARGS=(
 )
 start_bg cloakserve cloakserve "${CLOAK_ARGS[@]}"
 
-for _ in $(seq 1 120); do
-  curl --connect-timeout 1 --max-time 2 -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 && break
-  sleep 0.5
+# First boot downloads and extracts the CloakBrowser Chromium payload. On a
+# cold GitHub runner or cloud VM this can take several minutes, so do not fail
+# the whole stack after the previous 60-second window.
+CDP_READY=0
+for attempt in $(seq 1 180); do
+  if curl --connect-timeout 2 --max-time 5 -fsS \
+      "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
+    CDP_READY=1
+    break
+  fi
+  if (( attempt % 12 == 0 )); then
+    echo "[wait] CloakBrowser first-start initialization: attempt ${attempt}/180"
+    tail -n 30 /data/logs/cloakserve.log 2>/dev/null || true
+  fi
+  sleep 5
 done
-/usr/local/bin/browser-stack-healthcheck
 
+if (( CDP_READY == 0 )); then
+  echo "[fatal] CloakBrowser CDP did not become ready within 15 minutes"
+  cat /data/logs/cloakserve.log 2>/dev/null || true
+  exit 1
+fi
+
+/usr/local/bin/browser-stack-healthcheck
 echo "[ready] noVNC=:${NOVNC_PORT}, CDP=127.0.0.1:${CDP_PORT}, display=${DISPLAY}"
 
 while sleep 2; do
