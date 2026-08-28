@@ -30,6 +30,13 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -n "$UKC_TOKEN" || { echo "::error::UKC_TOKEN is not configured"; exit 1; }
+          test -n "$BOOTSTRAP_ADMIN_TOKEN" || { echo "::error::CDP_BOOTSTRAP_ADMIN_TOKEN is not configured"; exit 1; }
+
       - name: Install KraftKit
         shell: bash
         run: |

@@ -16,7 +16,7 @@ start_component() {
     name="$1"
     shift
     echo "[start] $name: $*"
-    "$@" 2>&1 | sed -u "s/^/[$name] /" &
+    "$@" &
     pid=$!
     pids="$pids $pid"
     echo "$pid" > "/tmp/${name}.pid"
