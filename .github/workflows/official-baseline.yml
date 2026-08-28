@@ -29,7 +29,9 @@ env:
   UKC_TOKEN: ${{ secrets.UKC_TOKEN }}
   UKC_METRO: ${{ vars.UKC_METRO || 'fra' }}
   CDP_BOOTSTRAP_ADMIN_TOKEN: ${{ secrets.CDP_BOOTSTRAP_ADMIN_TOKEN }}
-  KRAFTKIT_VERSION: "0.12.14"
+  KRAFTKIT_VERSION: "0.12.15"
+  KRAFTKIT_NO_CHECK_UPDATES: "true"
+  KRAFTKIT_NO_WARN_CLOUD_DEPRECATION: "1"
 
 jobs:
   baseline:
@@ -189,19 +191,45 @@ jobs:
         shell: bash
         run: |
           set +e
+
+          instance_exists() {
+            local name="$1"
+            kraft cloud instance get "$name" -o json \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1
+          }
+
+          volume_exists() {
+            local name="$1"
+            kraft cloud volume get "$name" -o json \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1
+          }
+
           case "${{ inputs.target }}" in
             novnc-browser)
-              kraft cloud instance remove baseline-novnc-browser \
-                --metro "$UKC_METRO" --token "$UKC_TOKEN"
+              if instance_exists baseline-novnc-browser; then
+                kraft cloud instance remove baseline-novnc-browser \
+                  --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+              else
+                echo "No baseline noVNC instance was created; skipping cleanup."
+              fi
               ;;
             chromium-cdp-auth)
-              kraft cloud instance remove baseline-chromium-cdp-auth \
-                --metro "$UKC_METRO" --token "$UKC_TOKEN"
-              sleep 5
-              kraft cloud volume remove baseline-cdp-auth-data \
-                --metro "$UKC_METRO" --token "$UKC_TOKEN"
+              if instance_exists baseline-chromium-cdp-auth; then
+                kraft cloud instance remove baseline-chromium-cdp-auth \
+                  --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+                sleep 5
+              else
+                echo "No baseline CDP instance was created; skipping instance cleanup."
+              fi
+              if volume_exists baseline-cdp-auth-data; then
+                kraft cloud volume remove baseline-cdp-auth-data \
+                  --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+              else
+                echo "No baseline CDP volume was created; skipping volume cleanup."
+              fi
               ;;
           esac
+          exit 0
 
       - name: Upload baseline evidence
         if: always()
