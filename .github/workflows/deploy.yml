@@ -32,23 +32,20 @@ jobs:
       - name: Install KraftKit
         run: |
           set -Eeuo pipefail
-          curl --proto '=https' --tlsv1.2 -sSf https://get.kraftkit.sh | sh
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release
+          sudo install -d -m 0755 /etc/apt/keyrings
+          curl -fsSL https://deb.pkg.kraftkit.sh/gpg.key \
+            | sudo gpg --dearmor --yes -o /etc/apt/keyrings/unikraft.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/unikraft.gpg] https://deb.pkg.kraftkit.sh $(lsb_release -cs) stable" \
+            | sudo tee /etc/apt/sources.list.d/unikraft.list >/dev/null
+          sudo apt-get update
+          sudo apt-get install -y kraftkit
 
-          KRAFT_BIN="$(command -v kraft || true)"
-          if [[ -z "$KRAFT_BIN" ]]; then
-            KRAFT_BIN="$(find "$HOME" /usr/local/bin -maxdepth 5 -type f -name kraft -perm -111 2>/dev/null | head -n 1)"
-          fi
-          if [[ -z "$KRAFT_BIN" ]]; then
-            echo "::error::KraftKit installer completed but kraft was not found"
-            find "$HOME" /usr/local/bin -maxdepth 4 -type f -name 'kraft*' -print 2>/dev/null || true
-            exit 1
-          fi
-
-          mkdir -p "$HOME/.local/bin"
-          ln -sf "$KRAFT_BIN" "$HOME/.local/bin/kraft"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          echo "KRAFT_BIN=$HOME/.local/bin/kraft" >> "$GITHUB_ENV"
-          "$HOME/.local/bin/kraft" version
+          KRAFT_BIN="$(command -v kraft)"
+          test -x "$KRAFT_BIN"
+          echo "KRAFT_BIN=$KRAFT_BIN" >> "$GITHUB_ENV"
+          "$KRAFT_BIN" version
       - name: Verify credentials and quota
         run: |
           set -Eeuo pipefail
