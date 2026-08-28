@@ -72,7 +72,7 @@ jobs:
           grep -Fq "10000:8080/tls" .github/workflows/deploy.yml
           grep -Fq "chromium-cdp-auth-data:/app/data" .github/workflows/deploy.yml
           grep -Fq "COPY ./visual-entrypoint.sh /usr/bin/visual-entrypoint.sh" deploy/visual-cdp/Dockerfile
-          grep -Fq "/usr/bin/mkdir /usr/bin/sleep" deploy/visual-cdp/Dockerfile
+          grep -Fq "/usr/bin/mkdir /usr/bin/sleep /usr/bin/sed /usr/bin/cat" deploy/visual-cdp/Dockerfile
           grep -Fq 'cmd: ["/usr/bin/wrapper.sh", "/usr/bin/visual-entrypoint.sh"]' deploy/visual-cdp/Kraftfile
           grep -Fq "timeout 30s kraft cloud instance logs" .github/workflows/deploy.yml
           grep -Fq "Wait for public endpoints" .github/workflows/deploy.yml
