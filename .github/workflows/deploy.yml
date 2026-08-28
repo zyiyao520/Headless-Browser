@@ -68,7 +68,7 @@ jobs:
             --memory "${{ inputs.memory }}"
             --port "443:6080/http+tls"
             --restart on-failure
-            --rollout replace
+            --rollout remove_sequential
             --rollout-wait 90s
             --env "VNC_PASSWORD=$VNC_PASSWORD"
             --env "CLOAKSERVE_AUTH_TOKEN=$CLOAKSERVE_AUTH_TOKEN"
