@@ -38,7 +38,7 @@ RUN pip install --no-cache-dir 'cloakbrowser[serve]' && \
       "https://raw.githubusercontent.com/CloakHQ/CloakBrowser/${CLOAKBROWSER_SOURCE_REV}/bin/cloakserve" \
       -o /usr/local/bin/cloakserve && \
     chmod 0755 /usr/local/bin/cloakserve && \
-    /usr/local/bin/cloakserve --help >/dev/null 2>&1 || true; \
+    test -x /usr/local/bin/cloakserve && \
     find /usr/local/lib/python3.12/site-packages -type d \
       \( -name tests -o -name __pycache__ \) -prune -exec rm -rf '{}' + && \
     rm -rf /root/.cache /tmp/*
