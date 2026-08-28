@@ -58,7 +58,7 @@ start_bg x11vnc x11vnc "${VNC_ARGS[@]}"
 
 start_bg novnc websockify --web /usr/share/novnc "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}"
 
-CLOAK_ARGS=(--host 127.0.0.1 --port "$CDP_PORT" --headless=false --idle-timeout "$CLOAK_IDLE_TIMEOUT" --data-dir "$CLOAK_DATA_DIR" --disable-dev-shm-usage)
+CLOAK_ARGS=(--host 0.0.0.0 --port "$CDP_PORT" --headless=false --idle-timeout "$CLOAK_IDLE_TIMEOUT" --data-dir "$CLOAK_DATA_DIR" --disable-dev-shm-usage)
 if [[ -n "${CLOAKSERVE_AUTH_TOKEN:-}" ]]; then
   CLOAK_ARGS+=(--auth-token "$CLOAKSERVE_AUTH_TOKEN")
 fi

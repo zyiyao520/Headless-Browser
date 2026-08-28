@@ -29,10 +29,19 @@ jobs:
             headless-browser:test
           trap 'docker logs browser-test || true; docker rm -f browser-test || true' EXIT
           for i in $(seq 1 90); do
-            if curl -fsS http://127.0.0.1:16080/vnc.html >/dev/null && \
-               curl -fsS http://127.0.0.1:19222/json/version >/dev/null; then
+            if curl -fsS http://127.0.0.1:16080/vnc.html >/dev/null 2>&1 && \
+               curl -fsS http://127.0.0.1:19222/json/version >/dev/null 2>&1; then
+              echo "Browser stack is ready"
               exit 0
+            fi
+            if (( i % 10 == 0 )); then
+              echo "Still waiting, attempt $i/90"
+              docker ps --filter name=browser-test
+              docker logs --tail 80 browser-test || true
             fi
             sleep 2
           done
+          echo "Browser stack did not become ready"
+          docker inspect browser-test --format='{{json .State}}' || true
+          docker logs browser-test || true
           exit 1
