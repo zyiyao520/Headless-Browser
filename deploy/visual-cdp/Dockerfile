@@ -281,3 +281,4 @@ COPY --from=build /home/tmp /app/data
 
 # Wrapper script set environment
 COPY ./wrapper.sh /usr/bin/wrapper.sh
+COPY ./visual-entrypoint.sh /usr/bin/visual-entrypoint.sh

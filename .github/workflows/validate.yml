@@ -71,4 +71,6 @@ jobs:
           grep -Fq "443:6080/http+tls" .github/workflows/deploy.yml
           grep -Fq "10000:8080/tls" .github/workflows/deploy.yml
           grep -Fq "chromium-cdp-auth-data:/app/data" .github/workflows/deploy.yml
+          grep -Fq "COPY ./visual-entrypoint.sh /usr/bin/visual-entrypoint.sh" deploy/visual-cdp/Dockerfile
+          grep -Fq 'cmd: ["/usr/bin/wrapper.sh", "/usr/bin/visual-entrypoint.sh"]' deploy/visual-cdp/Kraftfile
           grep -Fq "timeout 30s kraft cloud instance logs" .github/workflows/deploy.yml
