@@ -4,6 +4,13 @@ set -eu
 export DISPLAY=:99
 mkdir -p /tmp/.X11-unix /app/data/profile
 
+if [ -z "${VNC_PASSWORD:-}" ]; then
+    echo "[fatal] VNC_PASSWORD is not configured"
+    exit 1
+fi
+x11vnc -storepasswd "$VNC_PASSWORD" /tmp/vnc.pass >/dev/null
+chmod 600 /tmp/vnc.pass
+
 pids=""
 cleanup() {
     for pid in $pids; do
@@ -65,7 +72,7 @@ sleep 1
 require_alive xvfb
 
 start_component openbox openbox
-start_component x11vnc x11vnc -display :99 -localhost -forever -shared -rfbport 5900 -nopw
+start_component x11vnc x11vnc -display :99 -localhost -forever -shared -rfbport 5900 -rfbauth /tmp/vnc.pass
 wait_tcp x11vnc 5900 30
 
 start_component novnc python3 /usr/bin/websockify --web /opt/noVNC 6080 127.0.0.1:5900

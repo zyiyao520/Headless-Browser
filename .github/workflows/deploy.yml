@@ -20,6 +20,7 @@ env:
   UKC_TOKEN: ${{ secrets.UKC_TOKEN }}
   UKC_METRO: ${{ vars.UKC_METRO || 'fra' }}
   BOOTSTRAP_ADMIN_TOKEN: ${{ secrets.CDP_BOOTSTRAP_ADMIN_TOKEN }}
+  VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
   KRAFTKIT_VERSION: "0.12.15"
   KRAFTKIT_NO_CHECK_UPDATES: "true"
   KRAFTKIT_NO_WARN_CLOUD_DEPRECATION: "1"
@@ -36,6 +37,7 @@ jobs:
           set -Eeuo pipefail
           test -n "$UKC_TOKEN" || { echo "::error::UKC_TOKEN is not configured"; exit 1; }
           test -n "$BOOTSTRAP_ADMIN_TOKEN" || { echo "::error::CDP_BOOTSTRAP_ADMIN_TOKEN is not configured"; exit 1; }
+          test -n "$VNC_PASSWORD" || { echo "::error::VNC_PASSWORD is not configured"; exit 1; }
 
       - name: Install KraftKit
         shell: bash
@@ -120,6 +122,7 @@ jobs:
             --port '10000:8080/tls' \
             --volume 'chromium-cdp-auth-data:/app/data' \
             --env "BOOTSTRAP_ADMIN_TOKEN=$BOOTSTRAP_ADMIN_TOKEN" \
+            --env "VNC_PASSWORD=$VNC_PASSWORD" \
             --restart on-failure \
             --rollout remove_sequential \
             --rollout-wait 90s \
