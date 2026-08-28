@@ -95,12 +95,16 @@ RUN git clone --depth 1 --branch v1.6.0 https://github.com/novnc/noVNC.git /opt/
       done; \
     done && \
     cp -a /usr/lib/python3* /visual-root/usr/lib/ && \
-    cp -a /usr/lib/x86_64-linux-gnu/openbox /visual-root/usr/lib/x86_64-linux-gnu/ && \
     mkdir -p /visual-root/etc/xdg /visual-root/etc/fonts /visual-root/usr/share/fonts /visual-root/usr/share && \
-    cp -a /etc/xdg/openbox /visual-root/etc/xdg/ && \
-    cp -a /etc/fonts/. /visual-root/etc/fonts/ && \
-    cp -a /usr/share/fonts/. /visual-root/usr/share/fonts/ && \
-    cp -a /usr/share/openbox /visual-root/usr/share/ && \
+    if [ -d /etc/xdg/openbox ]; then cp -a /etc/xdg/openbox /visual-root/etc/xdg/; fi && \
+    if [ -d /etc/fonts ]; then cp -a /etc/fonts/. /visual-root/etc/fonts/; fi && \
+    if [ -d /usr/share/fonts ]; then cp -a /usr/share/fonts/. /visual-root/usr/share/fonts/; fi && \
+    if [ -d /usr/share/openbox ]; then cp -a /usr/share/openbox /visual-root/usr/share/; fi && \
+    for d in /usr/lib/openbox /usr/lib/*/openbox; do \
+      if [ -d "$d" ]; then \
+        target="/visual-root$(dirname "$d")"; mkdir -p "$target"; cp -a "$d" "$target/"; \
+      fi; \
+    done && \
     cp -a /opt/noVNC /visual-root/opt/
 
 FROM scratch
