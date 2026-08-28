@@ -150,8 +150,16 @@ jobs:
           volume=chromium-cdp-auth-data
           mkdir -p "$GITHUB_WORKSPACE/baseline-artifacts"
 
-          if ! kraft cloud volume get "$volume" -o json \
-              --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1; then
+          # Legacy KraftKit may return exit code 0 even when the JSON body reports
+          # "status":"error". Determine existence from the JSON payload, not $? .
+          kraft cloud volume list -o json \
+            --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+            | tee "$GITHUB_WORKSPACE/baseline-artifacts/volumes-before-create.json"
+
+          if grep -Fq "\"name\":\"$volume\"" \
+              "$GITHUB_WORKSPACE/baseline-artifacts/volumes-before-create.json"; then
+            echo "Reusing existing volume: $volume"
+          else
             echo "Creating persistent volume: $volume"
             kraft cloud volume create \
               --name "$volume" \
@@ -161,19 +169,19 @@ jobs:
               --output json \
               | tee "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"
 
-            if ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"success"' \
-                "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"; then
-              echo "::error::Volume create API did not return success"
-              cat "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"
-              exit 1
-            fi
-
-            echo "Volume inventory immediately after create:"
+            # A top-level success alone is insufficient. Verify the requested
+            # volume appears in the inventory immediately after creation.
+            sleep 2
             kraft cloud volume list -o json \
               --metro "$UKC_METRO" --token "$UKC_TOKEN" \
               | tee "$GITHUB_WORKSPACE/baseline-artifacts/volumes-immediately-after-create.json"
-          else
-            echo "Reusing existing volume: $volume"
+            if ! grep -Fq "\"name\":\"$volume\"" \
+                "$GITHUB_WORKSPACE/baseline-artifacts/volumes-immediately-after-create.json"; then
+              echo "::error::Volume creation returned without creating $volume"
+              echo "Create response:"
+              cat "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"
+              exit 1
+            fi
           fi
 
           volume_ready=0
