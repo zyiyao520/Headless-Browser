@@ -1,99 +1,133 @@
-name: Deploy to Unikraft Cloud
+name: Deploy Visual Chromium CDP
+
 on:
   workflow_dispatch:
     inputs:
-      memory:
-        description: Instance memory
-        required: true
-        default: 4Gi
-      scale_to_zero:
-        description: Enable stateful scale-to-zero
+      cleanup_old_image:
+        description: Delete the old headless baseline image before building
         type: boolean
         required: true
-        default: false
+        default: true
+
 permissions:
   contents: read
+
 concurrency:
-  group: unikraft-production
-  cancel-in-progress: false
+  group: visual-browser-deploy
+  cancel-in-progress: true
+
+env:
+  UKC_TOKEN: ${{ secrets.UKC_TOKEN }}
+  UKC_METRO: ${{ vars.UKC_METRO || 'fra' }}
+  BOOTSTRAP_ADMIN_TOKEN: ${{ secrets.CDP_BOOTSTRAP_ADMIN_TOKEN }}
+  KRAFTKIT_VERSION: "0.12.15"
+  KRAFTKIT_NO_CHECK_UPDATES: "true"
+  KRAFTKIT_NO_WARN_CLOUD_DEPRECATION: "1"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
-    env:
-      UKC_TOKEN: ${{ secrets.UKC_TOKEN }}
-      UKC_METRO: ${{ vars.UKC_METRO || 'fra' }}
-      INSTANCE_NAME: ${{ vars.UKC_INSTANCE_NAME || 'cloak-browser' }}
-      VNC_PASSWORD: ${{ secrets.VNC_PASSWORD }}
-      CLOAKBROWSER_LICENSE_KEY: ${{ secrets.CLOAKBROWSER_LICENSE_KEY }}
-      CLOAKSERVE_AUTH_TOKEN: ${{ secrets.CLOAKSERVE_AUTH_TOKEN }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Install KraftKit
-        env:
-          KRAFTKIT_VERSION: "0.12.14"
+        shell: bash
         run: |
           set -Eeuo pipefail
-          case "$(uname -m)" in
-            x86_64) arch=amd64 ;;
-            aarch64|arm64) arch=arm64 ;;
-            *) echo "::error::Unsupported runner architecture: $(uname -m)"; exit 1 ;;
-          esac
-
-          archive="kraft_${KRAFTKIT_VERSION}_linux_${arch}.tar.gz"
-          url="https://github.com/unikraft/kraftkit/releases/download/v${KRAFTKIT_VERSION}/${archive}"
-          tmpdir="$(mktemp -d)"
-          trap 'rm -rf "$tmpdir"' EXIT
-          curl --fail --location --retry 3 --retry-all-errors --output "$tmpdir/$archive" "$url"
-          tar -xzf "$tmpdir/$archive" -C "$tmpdir"
-          KRAFT_SOURCE="$(find "$tmpdir" -type f -name kraft -perm -111 | head -n 1)"
-          test -n "$KRAFT_SOURCE"
+          a=kraft_${KRAFTKIT_VERSION}_linux_amd64.tar.gz
+          u=https://github.com/unikraft/kraftkit/releases/download/v${KRAFTKIT_VERSION}/$a
+          d=$(mktemp -d)
+          curl -fL --retry 3 -o "$d/$a" "$u"
+          tar -xzf "$d/$a" -C "$d"
           install -d "$HOME/.local/bin"
-          install -m 0755 "$KRAFT_SOURCE" "$HOME/.local/bin/kraft"
-          echo "KRAFT_BIN=$HOME/.local/bin/kraft" >> "$GITHUB_ENV"
-          "$HOME/.local/bin/kraft" version
-      - name: Verify credentials and quota
+          install -m 755 "$(find "$d" -type f -name kraft -perm -111 | head -1)" "$HOME/.local/bin/kraft"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Remove previous test resources and image
+        shell: bash
+        run: |
+          set +e
+          # The persistent volume may still be mounted by either the previous
+          # headless baseline or an earlier visual deployment. Remove both
+          # possible owners before waiting for the volume to detach.
+          for instance in baseline-chromium-cdp-auth visual-chromium-cdp; do
+            kraft cloud instance remove "$instance" \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1 || true
+          done
+
+          detached=0
+          for i in $(seq 1 36); do
+            v=$(kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+            echo "$v"
+            if ! echo "$v" | grep -Fq '"state":"mounted"'; then
+              detached=1
+              break
+            fi
+            sleep 5
+          done
+          if (( detached == 0 )); then
+            echo "::error::Persistent volume remained mounted after removing old instances"
+            exit 1
+          fi
+
+          if [[ "${{ inputs.cleanup_old_image }}" == "true" ]]; then
+            images=$(kraft cloud image list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+            echo "$images"
+            for image in voss/baseline-chromium-cdp-auth voss/visual-chromium-cdp; do
+              if echo "$images" | grep -Fq "\"name\":\"$image\""; then
+                kraft cloud image delete "$image" \
+                  --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+              else
+                echo "Image $image does not exist; skipping deletion."
+              fi
+            done
+            sleep 60
+          fi
+      - name: Ensure persistent volume
+        shell: bash
         run: |
           set -Eeuo pipefail
-          test -n "$UKC_TOKEN"
-          "$KRAFT_BIN" cloud quota -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" | tee quota.json
-      - name: Deploy
+          j=$(kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+          echo "$j"
+          if ! echo "$j" | grep -Fq '"name":"chromium-cdp-auth-data"'; then
+            kraft cloud volume create --name chromium-cdp-auth-data --size 256Mi --metro "$UKC_METRO" --token "$UKC_TOKEN"
+          fi
+          ready=0
+          for i in $(seq 1 36); do
+            j=$(kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+            echo "$j"
+            if echo "$j" | grep -Eq '"state":"(available|idle)"'; then ready=1; break; fi
+            sleep 5
+          done
+          (( ready == 1 )) || { echo "::error::Volume is not attachable"; exit 1; }
+      - name: Build and deploy visual browser
+        working-directory: deploy/visual-cdp
+        shell: bash
         run: |
           set -Eeuo pipefail
-          args=(
-            cloud deploy .
-            --metro "$UKC_METRO"
-            --token "$UKC_TOKEN"
-            --name "$INSTANCE_NAME"
-            --memory "${{ inputs.memory }}"
-            --port "443:6080/http+tls"
-            --restart on-failure
-            --rollout remove_sequential
-            --rollout-wait 90s
-            --env "VNC_PASSWORD=$VNC_PASSWORD"
-            --env "CLOAKSERVE_AUTH_TOKEN=$CLOAKSERVE_AUTH_TOKEN"
-          )
-          if [[ -n "$CLOAKBROWSER_LICENSE_KEY" ]]; then
-            args+=(--env "CLOAKBROWSER_LICENSE_KEY=$CLOAKBROWSER_LICENSE_KEY")
-          fi
-          if [[ "${{ inputs.scale_to_zero }}" == "true" ]]; then
-            args+=(--scale-to-zero on --scale-to-zero-stateful)
-          fi
-          "$KRAFT_BIN" "${args[@]}" | tee deployment.txt
-      - name: Instance status
-        run: |
-          "$KRAFT_BIN" cloud instance list --metro "$UKC_METRO" --token "$UKC_TOKEN"
-      - name: Logs on failure
-        if: failure()
-        run: |
-          "$KRAFT_BIN" cloud instance logs "$INSTANCE_NAME" --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
-      - name: Upload metadata
+          kraft cloud deploy . \
+            --metro "$UKC_METRO" \
+            --token "$UKC_TOKEN" \
+            --name visual-chromium-cdp \
+            --memory 4Gi \
+            --port '443:6080/http+tls' \
+            --port '10000:8080/tls' \
+            --volume 'chromium-cdp-auth-data:/app/data' \
+            --env "BOOTSTRAP_ADMIN_TOKEN=$BOOTSTRAP_ADMIN_TOKEN" \
+            --restart on-failure \
+            --rollout remove_sequential \
+            --rollout-wait 90s \
+            --output json | tee "$GITHUB_WORKSPACE/visual-deployment.json"
+      - name: Capture status and bounded logs
         if: always()
-        uses: actions/upload-artifact@v4
+        shell: bash
+        run: |
+          set +e
+          kraft cloud instance get visual-chromium-cdp -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" | tee visual-instance.json
+          timeout 30s kraft cloud instance logs visual-chromium-cdp --metro "$UKC_METRO" --token "$UKC_TOKEN" > visual-instance.log 2>&1 || true
+          kraft cloud image list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" > visual-images.json 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: unikraft-deployment
-          path: |
-            quota.json
-            deployment.txt
-          if-no-files-found: ignore
-          retention-days: 7
+          name: visual-browser-${{ github.run_id }}
+          path: visual-*
+          retention-days: 14

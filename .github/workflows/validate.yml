@@ -1,77 +1,72 @@
-name: Validate
+name: Validate Visual Browser
+
 on:
-  pull_request:
   push:
     branches: [main]
+    paths:
+      - 'deploy/visual-cdp/**'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/validate.yml'
+  pull_request:
+    paths:
+      - 'deploy/visual-cdp/**'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/validate.yml'
   workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: validate-visual-browser-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
       - name: Validate shell scripts
+        shell: bash
         run: |
           set -Eeuo pipefail
-          bash -n scripts/entrypoint.sh
-          bash -n scripts/healthcheck.sh
-          bash -n scripts/open-tunnel.sh
-      - name: Build OCI image
-        run: docker build --tag headless-browser:test .
-      - name: Enforce Unikraft Hobby image limit
+          bash -n deploy/visual-cdp/wrapper.sh
+          bash -n deploy/visual-cdp/visual-entrypoint.sh
+
+      - name: Validate Node.js proxy
+        shell: bash
         run: |
           set -Eeuo pipefail
-          size=$(docker image inspect headless-browser:test --format='{{.Size}}')
-          size_mib=$((size / 1024 / 1024))
-          echo "Flattened Docker image size: $size bytes (${size_mib} MiB)"
-          echo "Unikraft account currently reports approximately 35.6 MiB already used."
-          echo "Projected total before packaging overhead: approximately $((size_mib + 36)) MiB of 1024 MiB."
-          limit=$((940 * 1024 * 1024))
-          if (( size > limit )); then
-            echo "::error::Image exceeds 940 MiB deployment ceiling for the 1 GiB Unikraft registry quota"
-            exit 1
-          fi
-      - name: Smoke test container
+          node --check deploy/visual-cdp/proxy.js
+
+      - name: Validate YAML
+        shell: bash
         run: |
           set -Eeuo pipefail
-          docker run -d --name browser-test \
-            --shm-size=256m \
-            -p 16080:6080 \
-            -p 19222:9222 \
-            headless-browser:test
-          trap 'docker logs browser-test || true; docker rm -f browser-test || true' EXIT
-          for i in $(seq 1 240); do
-            if curl --connect-timeout 1 --max-time 3 -fsS http://127.0.0.1:16080/vnc.html >/dev/null 2>&1 && \
-               curl --connect-timeout 1 --max-time 3 -fsS http://127.0.0.1:19222/json/version >/dev/null 2>&1; then
-              echo "Browser stack is ready"
-              exit 0
-            fi
-            if (( i % 10 == 0 )); then
-              echo "Still waiting, attempt $i/240"
-              docker ps --filter name=browser-test
-              docker logs --tail 80 browser-test || true
-              docker exec browser-test sh -lc '''
-                echo "== processes =="
-                ps aux || true
-                echo "== listeners =="
-                ss -lntp 2>/dev/null || netstat -lntp 2>/dev/null || true
-                echo "== component logs =="
-                for f in /data/logs/*.log; do
-                  echo "--- $f ---"
-                  tail -n 100 "$f" || true
-                done
-              ''' || true
-            fi
-            sleep 2
-          done
-          echo "Browser stack did not become ready within 12 minutes"
-          docker inspect browser-test --format='{{json .State}}' || true
-          docker logs browser-test || true
-          docker exec browser-test sh -lc '''
-            for f in /data/logs/*.log; do
-              echo "--- $f ---"
-              cat "$f" || true
-            done
-          ''' || true
-          exit 1
+          python3 - <<'PY'
+          import pathlib
+          import yaml
+
+          for path in [
+              pathlib.Path('deploy/visual-cdp/Kraftfile'),
+              pathlib.Path('.github/workflows/deploy.yml'),
+              pathlib.Path('.github/workflows/validate.yml'),
+              pathlib.Path('.github/workflows/cleanup-unikraft-images.yml'),
+          ]:
+              with path.open(encoding='utf-8') as stream:
+                  yaml.safe_load(stream)
+              print(f'OK: {path}')
+          PY
+
+      - name: Check deployment invariants
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -Fq "headless: false" deploy/visual-cdp/proxy.js
+          grep -Fq "launchPersistentContext('/app/data/profile'" deploy/visual-cdp/proxy.js
+          grep -Fq "443:6080/http+tls" .github/workflows/deploy.yml
+          grep -Fq "10000:8080/tls" .github/workflows/deploy.yml
+          grep -Fq "chromium-cdp-auth-data:/app/data" .github/workflows/deploy.yml
+          grep -Fq "timeout 30s kraft cloud instance logs" .github/workflows/deploy.yml

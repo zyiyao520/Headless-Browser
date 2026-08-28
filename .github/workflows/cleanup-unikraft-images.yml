@@ -23,7 +23,7 @@ permissions:
 
 concurrency:
   group: unikraft-image-maintenance
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   UKC_TOKEN: ${{ secrets.UKC_TOKEN }}
@@ -142,9 +142,15 @@ jobs:
         run: |
           set -Eeuo pipefail
           for attempt in $(seq 1 15); do
-            echo "Quota refresh check ${attempt}/15"
+            echo "Registry refresh check ${attempt}/15"
             kraft cloud quota -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" \
               | tee cleanup-artifacts/quota-latest.json
+            kraft cloud image list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+              | tee cleanup-artifacts/images-latest.json
+            if ! grep -Fq '"name":' cleanup-artifacts/images-latest.json; then
+              echo "No images remain; registry cleanup is complete."
+              break
+            fi
             sleep 60
           done
 
