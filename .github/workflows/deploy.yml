@@ -30,22 +30,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install KraftKit
+        env:
+          KRAFTKIT_VERSION: "0.12.14"
         run: |
           set -Eeuo pipefail
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release
-          sudo install -d -m 0755 /etc/apt/keyrings
-          curl -fsSL https://deb.pkg.kraftkit.sh/gpg.key \
-            | sudo gpg --dearmor --yes -o /etc/apt/keyrings/unikraft.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/unikraft.gpg] https://deb.pkg.kraftkit.sh $(lsb_release -cs) stable" \
-            | sudo tee /etc/apt/sources.list.d/unikraft.list >/dev/null
-          sudo apt-get update
-          sudo apt-get install -y kraftkit
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64|arm64) arch=arm64 ;;
+            *) echo "::error::Unsupported runner architecture: $(uname -m)"; exit 1 ;;
+          esac
 
-          KRAFT_BIN="$(command -v kraft)"
-          test -x "$KRAFT_BIN"
-          echo "KRAFT_BIN=$KRAFT_BIN" >> "$GITHUB_ENV"
-          "$KRAFT_BIN" version
+          archive="kraft_${KRAFTKIT_VERSION}_linux_${arch}.tar.gz"
+          url="https://github.com/unikraft/kraftkit/releases/download/v${KRAFTKIT_VERSION}/${archive}"
+          tmpdir="$(mktemp -d)"
+          trap 'rm -rf "$tmpdir"' EXIT
+          curl --fail --location --retry 3 --retry-all-errors --output "$tmpdir/$archive" "$url"
+          tar -xzf "$tmpdir/$archive" -C "$tmpdir"
+          KRAFT_SOURCE="$(find "$tmpdir" -type f -name kraft -perm -111 | head -n 1)"
+          test -n "$KRAFT_SOURCE"
+          install -d "$HOME/.local/bin"
+          install -m 0755 "$KRAFT_SOURCE" "$HOME/.local/bin/kraft"
+          echo "KRAFT_BIN=$HOME/.local/bin/kraft" >> "$GITHUB_ENV"
+          "$HOME/.local/bin/kraft" version
       - name: Verify credentials and quota
         run: |
           set -Eeuo pipefail
