@@ -19,6 +19,16 @@ jobs:
           bash -n scripts/open-tunnel.sh
       - name: Build OCI image
         run: docker build --tag headless-browser:test .
+      - name: Enforce Unikraft Hobby image limit
+        run: |
+          set -Eeuo pipefail
+          size=$(docker image inspect headless-browser:test --format='{{.Size}}')
+          echo "Flattened Docker image size: $size bytes"
+          limit=$((900 * 1024 * 1024))
+          if (( size > limit )); then
+            echo "::error::Image exceeds 900 MiB safety target for the 1 GiB Unikraft registry quota"
+            exit 1
+          fi
       - name: Smoke test container
         run: |
           set -Eeuo pipefail
