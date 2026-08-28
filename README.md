@@ -1,82 +1,107 @@
-# Headless-Browser
+# Remote Browser on Unikraft Cloud
 
-Unikraft Cloud remote browser node:
-
-- Remote: CloakBrowser + Xvfb + Openbox + x11vnc + noVNC
-- Local: OpenCode + agent-browser
-- noVNC is published through Unikraft HTTPS service
-- CDP stays private and is reached with `kraft cloud tunnel`
+A single visual Chromium instance that supports both browser-based human access and authenticated CDP automation.
 
 ## Architecture
 
 ```text
-Local OpenCode -> local agent-browser -> localhost:9222
-                                       -> kraft cloud tunnel
-                                       -> private CloakBrowser CDP :9222
+Human operator
+  -> HTTPS 443
+  -> noVNC 6080
+  -> x11vnc 5900
+  -> Xvfb + Openbox
+  -> Chromium
 
-Operator browser -> HTTPS noVNC :443 -> websockify :6080
-                                      -> x11vnc :5901
-                                      -> Xvfb :99
-                                      -> same CloakBrowser window
+OpenCode / agent-browser
+  -> TLS 10000
+  -> authenticated CDP proxy 8080
+  -> the same Chromium instance
 ```
 
-## GitHub repository configuration
+Browser profile and CDP token data are stored on the persistent volume mounted at `/app/data`.
 
-Create these Actions secrets:
+## Repository layout
 
-- `UKC_TOKEN` required
-- `VNC_PASSWORD` strongly recommended
-- `CLOAKSERVE_AUTH_TOKEN` strongly recommended
-- `CLOAKBROWSER_LICENSE_KEY` optional
+```text
+.github/workflows/deploy.yml   Manual production deployment workflow
+deploy/visual-cdp/             Runtime image, launcher, and CDP proxy
+```
 
-Create these Actions variables:
+Only one GitHub Actions workflow is retained. It uses `workflow_dispatch`, so pushes and pull requests do not start builds or deployments.
 
-- `UKC_METRO`, default `fra`
-- `UKC_INSTANCE_NAME`, default `cloak-browser`
+## Required GitHub configuration
 
-Run **Actions -> Deploy to Unikraft Cloud -> Run workflow**.
+Repository secrets:
 
-## Local CDP tunnel
+```text
+UKC_TOKEN
+CDP_BOOTSTRAP_ADMIN_TOKEN
+VNC_PASSWORD
+```
 
-Install KraftKit and agent-browser locally, then:
+Optional repository variable:
+
+```text
+UKC_METRO=fra
+```
+
+If `UKC_METRO` is absent, the workflow uses `fra`.
+
+## Deploy
+
+Open:
+
+```text
+GitHub -> Actions -> Deploy Remote Browser -> Run workflow
+```
+
+The workflow replaces the previous `visual-chromium-cdp` instance, reuses the existing persistent volume, builds the image, deploys it, and waits for both public endpoints.
+
+## Connect to noVNC
+
+Use the newest FQDN printed by the deployment workflow:
+
+```text
+https://<FQDN>/vnc.html
+```
+
+Enter the value stored in `VNC_PASSWORD` when prompted.
+
+## Connect to CDP
+
+Set the latest FQDN and the current CDP token locally:
 
 ```bash
-export UKC_TOKEN='...'
-export UKC_METRO='fra'
-export UKC_INSTANCE_NAME='cloak-browser'
-./scripts/open-tunnel.sh
+export CDP_HOST='<FQDN>'
+export CDP_TOKEN='<token>'
 ```
 
-Keep that terminal open. In another terminal:
+Retrieve the authenticated WebSocket endpoint:
 
 ```bash
-agent-browser connect 9222
-agent-browser --session opencode-main --pin-tab open https://example.com
-agent-browser --session opencode-main snapshot -i
+CDP_WS=$(curl -fsS \
+  "https://${CDP_HOST}:10000/json/version?token=${CDP_TOKEN}" \
+  | jq -r '.webSocketDebuggerUrl')
 ```
 
-## Local container test
+Connect with `agent-browser` using the returned `wss://` URL:
 
 ```bash
-docker build -t headless-browser .
-docker run --rm \
-  --shm-size=256m \
-  -e VNC_PASSWORD='change-me' \
-  -p 6080:6080 \
-  -p 127.0.0.1:9222:9222 \
-  headless-browser
+agent-browser --cdp "$CDP_WS" open 'https://example.com'
+agent-browser --cdp "$CDP_WS" snapshot -i
 ```
 
-Open `http://localhost:6080/vnc.html`. CDP is available at `http://127.0.0.1:9222/json/version`.
+Use the `wss://` endpoint returned by `/json/version`. Do not pass the HTTPS discovery URL directly to `agent-browser`.
 
-## Notes
+## Published ports
 
-The Hobby plan does not expose instance shared-memory as a plan feature, so CloakBrowser is launched with `--disable-dev-shm-usage`. Only noVNC is public. Never publish CDP port 9222 directly.
+```text
+443    -> 6080  noVNC over HTTP + TLS
+10000  -> 8080  authenticated CDP over TLS
+```
 
-## Hobby image-size strategy
+## Security
 
-The CloakBrowser Chromium payload is intentionally not embedded in the image.
-`cloakserve` downloads and verifies the browser binary on first boot. This keeps
-the registry image below the Hobby 1 GiB image-storage limit at the cost of a
-longer first start. A persistent volume/cache can be added after the initial
-Unikraft runtime validation.
+- Never commit API keys, cloud tokens, CDP tokens, VNC passwords, cookies, or browser profiles.
+- Rotate any credential that appears in chat, terminal output, screenshots, or logs.
+- Keep CDP authentication enabled and noVNC password protection configured.

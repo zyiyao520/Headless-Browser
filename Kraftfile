@@ -1,9 +1,0 @@
-spec: v0.7
-runtime: base-compat:latest
-rootfs:
-  source: ./Dockerfile
-  format: erofs
-cmd:
-  - /usr/bin/tini
-  - --
-  - /usr/local/bin/browser-stack-entrypoint

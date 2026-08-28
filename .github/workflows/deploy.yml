@@ -1,10 +1,10 @@
-name: Deploy Visual Chromium CDP
+name: Deploy Remote Browser
 
 on:
   workflow_dispatch:
     inputs:
       cleanup_old_image:
-        description: Delete the old headless baseline image before building
+        description: Delete the previous application image before building
         type: boolean
         required: true
         default: true
@@ -51,13 +51,11 @@ jobs:
           install -d "$HOME/.local/bin"
           install -m 755 "$(find "$d" -type f -name kraft -perm -111 | head -1)" "$HOME/.local/bin/kraft"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-      - name: Remove previous test resources and image
+      - name: Remove previous deployment resources and image
         shell: bash
         run: |
           set +e
-          # The persistent volume may still be mounted by either the previous
-          # headless baseline or an earlier visual deployment. Remove both
-          # possible owners before waiting for the volume to detach.
+          # Remove previous deployments before reusing the persistent volume.
           for instance in baseline-chromium-cdp-auth visual-chromium-cdp; do
             kraft cloud instance remove "$instance" \
               --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1 || true

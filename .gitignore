@@ -1,8 +1,9 @@
 .env
 .env.*
-!.env.example
 profile/
 downloads/
 screenshots/
 logs/
 *.log
+visual-*.json
+visual-*.log
