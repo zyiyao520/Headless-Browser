@@ -33,12 +33,27 @@ jobs:
         run: |
           set -Eeuo pipefail
           curl --proto '=https' --tlsv1.2 -sSf https://get.kraftkit.sh | sh
+
+          KRAFT_BIN="$(command -v kraft || true)"
+          if [[ -z "$KRAFT_BIN" ]]; then
+            KRAFT_BIN="$(find "$HOME" /usr/local/bin -maxdepth 5 -type f -name kraft -perm -111 2>/dev/null | head -n 1)"
+          fi
+          if [[ -z "$KRAFT_BIN" ]]; then
+            echo "::error::KraftKit installer completed but kraft was not found"
+            find "$HOME" /usr/local/bin -maxdepth 4 -type f -name 'kraft*' -print 2>/dev/null || true
+            exit 1
+          fi
+
+          mkdir -p "$HOME/.local/bin"
+          ln -sf "$KRAFT_BIN" "$HOME/.local/bin/kraft"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          echo "KRAFT_BIN=$HOME/.local/bin/kraft" >> "$GITHUB_ENV"
+          "$HOME/.local/bin/kraft" version
       - name: Verify credentials and quota
         run: |
           set -Eeuo pipefail
           test -n "$UKC_TOKEN"
-          "$HOME/.local/bin/kraft" cloud quota -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" | tee quota.json
+          "$KRAFT_BIN" cloud quota -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" | tee quota.json
       - name: Deploy
         run: |
           set -Eeuo pipefail
@@ -61,14 +76,14 @@ jobs:
           if [[ "${{ inputs.scale_to_zero }}" == "true" ]]; then
             args+=(--scale-to-zero on --scale-to-zero-stateful)
           fi
-          "$HOME/.local/bin/kraft" "${args[@]}" | tee deployment.txt
+          "$KRAFT_BIN" "${args[@]}" | tee deployment.txt
       - name: Instance status
         run: |
-          "$HOME/.local/bin/kraft" cloud instance list --metro "$UKC_METRO" --token "$UKC_TOKEN"
+          "$KRAFT_BIN" cloud instance list --metro "$UKC_METRO" --token "$UKC_TOKEN"
       - name: Logs on failure
         if: failure()
         run: |
-          "$HOME/.local/bin/kraft" cloud instance logs "$INSTANCE_NAME" --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+          "$KRAFT_BIN" cloud instance logs "$INSTANCE_NAME" --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
       - name: Upload metadata
         if: always()
         uses: actions/upload-artifact@v4
