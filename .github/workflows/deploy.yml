@@ -123,26 +123,37 @@ jobs:
             --restart on-failure \
             --rollout remove_sequential \
             --rollout-wait 90s \
-            --output json | tee "$GITHUB_WORKSPACE/visual-deployment.json"
+            --output json
+
+          # Obtain a clean controller response after deployment. KraftKit build
+          # progress and deployment output are not guaranteed to form a JSON-only
+          # stdout stream suitable for direct parsing.
+          instance_json="$GITHUB_WORKSPACE/visual-instance-current.json"
+          for attempt in $(seq 1 24); do
+            kraft cloud instance get visual-chromium-cdp -o json \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+              > "$instance_json" 2>/tmp/instance-get.err || true
+            if [[ -s "$instance_json" ]] && python3 -m json.tool "$instance_json" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 5
+          done
       - name: Wait for public endpoints
         shell: bash
         run: |
           set -Eeuo pipefail
-          result="$GITHUB_WORKSPACE/visual-deployment.json"
+          result="$GITHUB_WORKSPACE/visual-instance-current.json"
           if [[ ! -s "$result" ]]; then
-            echo "::error::Deployment result is missing or empty: $result"
+            echo "::error::Instance query result is missing or empty"
+            cat /tmp/instance-get.err 2>/dev/null || true
             exit 1
           fi
           if ! python3 -m json.tool "$result" >/dev/null 2>&1; then
-            echo "::error::Deployment result is not valid JSON"
+            echo "::error::Instance query result is not valid JSON"
             cat "$result"
             exit 1
           fi
-          fqdn=$(python3 -c "import json,sys; o=json.load(open(sys.argv[1])); assert o.get('status') == 'success'; i=o.get('data',{}).get('instances',[]); assert i; d=i[0].get('service_group',{}).get('domains',[]); assert d and d[0].get('fqdn'); print(d[0]['fqdn'])" "$result") || {
-            echo "::error::Could not extract a successful deployment FQDN"
-            cat "$result"
-            exit 1
-          }
+          fqdn=$(python3 -c "import json,sys; o=json.load(open(sys.argv[1])); i=o.get('data',{}).get('instances',[]); assert i; d=i[0].get('service_group',{}).get('domains',[]); assert d and d[0].get('fqdn'); print(d[0]['fqdn'])" "$result")
           echo "Visual browser FQDN: $fqdn"
           novnc_ready=0
           cdp_ready=0
