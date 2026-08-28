@@ -184,6 +184,34 @@ jobs:
             fi
           fi
 
+          # A persistent volume mounted by the previous baseline instance
+          # cannot be attached to the replacement instance. Remove the old
+          # instance first and wait until the volume becomes available again.
+          if grep -Fq '"state":"mounted"' \
+              "$GITHUB_WORKSPACE/baseline-artifacts/volumes-before-create.json"; then
+            echo "Volume is mounted by the previous instance; removing it first"
+            kraft cloud instance remove baseline-chromium-cdp-auth \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+
+            detached=0
+            for detach_attempt in $(seq 1 36); do
+              echo "Volume detach check ${detach_attempt}/36"
+              kraft cloud volume list -o json \
+                --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+                | tee "$GITHUB_WORKSPACE/baseline-artifacts/volume-detach-status.json"
+              if grep -Eiq '"state"[[:space:]]*:[[:space:]]*"(available|idle)"' \
+                  "$GITHUB_WORKSPACE/baseline-artifacts/volume-detach-status.json"; then
+                detached=1
+                break
+              fi
+              sleep 5
+            done
+            if (( detached == 0 )); then
+              echo "::error::Volume $volume remained mounted after old instance removal"
+              exit 1
+            fi
+          fi
+
           volume_ready=0
           for attempt in $(seq 1 36); do
             echo "Volume readiness check ${attempt}/36"
@@ -212,15 +240,6 @@ jobs:
           # the registry for another ~790 MiB, exceeding the 1 GiB quota.
           # Instantiate the existing tagged image directly instead.
           image_ref="voss/baseline-chromium-cdp-auth:latest"
-          if kraft cloud instance get baseline-chromium-cdp-auth -o json \
-              --metro "$UKC_METRO" --token "$UKC_TOKEN" \
-              | grep -Fq '"name":"baseline-chromium-cdp-auth"'; then
-            echo "Removing stale baseline instance before recreation"
-            kraft cloud instance remove baseline-chromium-cdp-auth \
-              --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
-            sleep 5
-          fi
-
           kraft cloud instance create \
             --start \
             --metro "$UKC_METRO" \
