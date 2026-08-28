@@ -147,7 +147,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          volume=baseline-cdp-auth-data
+          volume=chromium-cdp-auth-data
           mkdir -p "$GITHUB_WORKSPACE/baseline-artifacts"
 
           if ! kraft cloud volume get "$volume" -o json \
@@ -160,6 +160,18 @@ jobs:
               --token "$UKC_TOKEN" \
               --output json \
               | tee "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"
+
+            if ! grep -Eq '"status"[[:space:]]*:[[:space:]]*"success"' \
+                "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"; then
+              echo "::error::Volume create API did not return success"
+              cat "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"
+              exit 1
+            fi
+
+            echo "Volume inventory immediately after create:"
+            kraft cloud volume list -o json \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+              | tee "$GITHUB_WORKSPACE/baseline-artifacts/volumes-immediately-after-create.json"
           else
             echo "Reusing existing volume: $volume"
           fi
@@ -256,8 +268,8 @@ jobs:
               else
                 echo "No baseline CDP instance was created; skipping instance cleanup."
               fi
-              if volume_exists baseline-cdp-auth-data; then
-                kraft cloud volume remove baseline-cdp-auth-data \
+              if volume_exists chromium-cdp-auth-data; then
+                kraft cloud volume remove chromium-cdp-auth-data \
                   --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
               else
                 echo "No baseline CDP volume was created; skipping volume cleanup."
