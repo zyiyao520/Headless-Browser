@@ -58,10 +58,17 @@ start_bg x11vnc x11vnc "${VNC_ARGS[@]}"
 
 start_bg novnc websockify --web /usr/share/novnc "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}"
 
-CLOAK_ARGS=(--host 0.0.0.0 --port "$CDP_PORT" --headless=false --idle-timeout "$CLOAK_IDLE_TIMEOUT" --data-dir "$CLOAK_DATA_DIR" --disable-dev-shm-usage)
-if [[ -n "${CLOAKSERVE_AUTH_TOKEN:-}" ]]; then
-  CLOAK_ARGS+=(--auth-token "$CLOAKSERVE_AUTH_TOKEN")
-fi
+# cloakserve only consumes its own options in --name=value form. Passing
+# "--port 9222" leaves "9222" as a positional Chrome target and makes Chrome
+# abort with "Multiple targets are not supported in headless mode".
+# The official container automatically listens on 0.0.0.0.
+CLOAK_ARGS=(
+  "--port=${CDP_PORT}"
+  "--headless=false"
+  "--idle-timeout=${CLOAK_IDLE_TIMEOUT}"
+  "--data-dir=${CLOAK_DATA_DIR}"
+  "--disable-dev-shm-usage"
+)
 start_bg cloakserve cloakserve "${CLOAK_ARGS[@]}"
 
 for _ in $(seq 1 120); do
