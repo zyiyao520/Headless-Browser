@@ -65,7 +65,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           grep -Fq "headless: false" deploy/visual-cdp/proxy.js
-          grep -Fq "launchPersistentContext('/app/data/profile'" deploy/visual-cdp/proxy.js
+          grep -Fq "browserContext = await chromium.launchPersistentContext('/app/data/profile'" deploy/visual-cdp/proxy.js
+          ! grep -Fq "/usr/lib/x86_64-linux-gnu/openbox" deploy/visual-cdp/Dockerfile
+          grep -Fq "if [ -d /usr/share/openbox ]" deploy/visual-cdp/Dockerfile
           grep -Fq "443:6080/http+tls" .github/workflows/deploy.yml
           grep -Fq "10000:8080/tls" .github/workflows/deploy.yml
           grep -Fq "chromium-cdp-auth-data:/app/data" .github/workflows/deploy.yml
