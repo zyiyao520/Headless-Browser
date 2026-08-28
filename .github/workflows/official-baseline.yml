@@ -148,10 +148,45 @@ jobs:
         run: |
           set -Eeuo pipefail
           volume=baseline-cdp-auth-data
-          if ! kraft cloud volume get "$volume" -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1; then
-            kraft cloud volume create --name "$volume" --size 64Mi \
-              --metro "$UKC_METRO" --token "$UKC_TOKEN"
+          mkdir -p "$GITHUB_WORKSPACE/baseline-artifacts"
+
+          if ! kraft cloud volume get "$volume" -o json \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1; then
+            echo "Creating persistent volume: $volume"
+            kraft cloud volume create \
+              --name "$volume" \
+              --size 64Mi \
+              --metro "$UKC_METRO" \
+              --token "$UKC_TOKEN" \
+              --output json \
+              | tee "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-create.json"
+          else
+            echo "Reusing existing volume: $volume"
           fi
+
+          volume_ready=0
+          for attempt in $(seq 1 36); do
+            echo "Volume readiness check ${attempt}/36"
+            if kraft cloud volume get "$volume" -o json \
+                --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+                | tee "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-status.json"; then
+              if grep -Eiq '"state"[[:space:]]*:[[:space:]]*"(available|idle)"' \
+                  "$GITHUB_WORKSPACE/baseline-artifacts/cdp-volume-status.json"; then
+                volume_ready=1
+                break
+              fi
+            fi
+            sleep 5
+          done
+
+          kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+            | tee "$GITHUB_WORKSPACE/baseline-artifacts/volumes-before-cdp-deploy.json" || true
+
+          if (( volume_ready == 0 )); then
+            echo "::error::Volume $volume did not become available within 3 minutes"
+            exit 1
+          fi
+
           kraft cloud deploy \
             --metro "$UKC_METRO" \
             --token "$UKC_TOKEN" \
