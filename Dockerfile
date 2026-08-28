@@ -29,10 +29,10 @@ RUN apt-get update && \
       fonts-wqy-zenhei \
     && rm -rf /var/lib/apt/lists/* /usr/share/doc/* /usr/share/man/* /usr/share/locale/*
 
-# Python wrapper and CDP multiplexer only. The Chromium binary is downloaded
-# while building so the runtime never depends on a first-boot download.
+# Install only the Python wrapper and CDP multiplexer. Do not bake the large
+# Chromium payload into the OCI/EroFS image because Hobby registry storage is
+# capped at 1 GiB. cloakserve downloads and verifies it on first start.
 RUN pip install --no-cache-dir 'cloakbrowser[serve]' && \
-    python -c 'from cloakbrowser import ensure_binary; ensure_binary()' && \
     find /usr/local/lib/python3.12/site-packages -type d \
       \( -name tests -o -name __pycache__ \) -prune -exec rm -rf '{}' + && \
     rm -rf /root/.cache /tmp/*

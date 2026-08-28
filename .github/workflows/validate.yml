@@ -24,9 +24,9 @@ jobs:
           set -Eeuo pipefail
           size=$(docker image inspect headless-browser:test --format='{{.Size}}')
           echo "Flattened Docker image size: $size bytes"
-          limit=$((900 * 1024 * 1024))
+          limit=$((850 * 1024 * 1024))
           if (( size > limit )); then
-            echo "::error::Image exceeds 900 MiB safety target for the 1 GiB Unikraft registry quota"
+            echo "::error::Image exceeds 850 MiB safety target for the 1 GiB Unikraft registry quota"
             exit 1
           fi
       - name: Smoke test container

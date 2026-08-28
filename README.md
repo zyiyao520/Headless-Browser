@@ -72,3 +72,11 @@ Open `http://localhost:6080/vnc.html`. CDP is available at `http://127.0.0.1:922
 ## Notes
 
 The Hobby plan does not expose instance shared-memory as a plan feature, so CloakBrowser is launched with `--disable-dev-shm-usage`. Only noVNC is public. Never publish CDP port 9222 directly.
+
+## Hobby image-size strategy
+
+The CloakBrowser Chromium payload is intentionally not embedded in the image.
+`cloakserve` downloads and verifies the browser binary on first boot. This keeps
+the registry image below the Hobby 1 GiB image-storage limit at the cost of a
+longer first start. A persistent volume/cache can be added after the initial
+Unikraft runtime validation.
