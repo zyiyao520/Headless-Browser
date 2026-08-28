@@ -207,7 +207,22 @@ jobs:
             exit 1
           fi
 
-          kraft cloud deploy \
+          # The baseline image already occupies about 826 MiB. Running
+          # `cloud deploy .` rebuilds it with a new digest and temporarily asks
+          # the registry for another ~790 MiB, exceeding the 1 GiB quota.
+          # Instantiate the existing tagged image directly instead.
+          image_ref="voss/baseline-chromium-cdp-auth:latest"
+          if kraft cloud instance get baseline-chromium-cdp-auth -o json \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" \
+              | grep -Fq '"name":"baseline-chromium-cdp-auth"'; then
+            echo "Removing stale baseline instance before recreation"
+            kraft cloud instance remove baseline-chromium-cdp-auth \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+            sleep 5
+          fi
+
+          kraft cloud instance create \
+            --start \
             --metro "$UKC_METRO" \
             --token "$UKC_TOKEN" \
             --name baseline-chromium-cdp-auth \
@@ -216,10 +231,8 @@ jobs:
             --volume "$volume:/app/data" \
             --env "BOOTSTRAP_ADMIN_TOKEN=$CDP_BOOTSTRAP_ADMIN_TOKEN" \
             --restart on-failure \
-            --rollout remove_sequential \
-            --rollout-wait 90s \
             --output json \
-            . | tee "$GITHUB_WORKSPACE/baseline-artifacts/cdp-auth-deployment.json"
+            "$image_ref" | tee "$GITHUB_WORKSPACE/baseline-artifacts/cdp-auth-deployment.json"
           kraft cloud instance get baseline-chromium-cdp-auth -o json \
             --metro "$UKC_METRO" --token "$UKC_TOKEN" \
             | tee "$GITHUB_WORKSPACE/baseline-artifacts/cdp-auth-instance.json" || true
