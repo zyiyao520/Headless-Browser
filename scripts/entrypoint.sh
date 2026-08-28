@@ -56,7 +56,7 @@ else
 fi
 start_bg x11vnc x11vnc "${VNC_ARGS[@]}"
 
-start_bg novnc websockify --web /usr/share/novnc "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}"
+start_bg novnc /usr/local/bin/novnc-proxy
 
 # cloakserve only consumes its own options in --name=value form. Passing
 # "--port 9222" leaves "9222" as a positional Chrome target and makes Chrome
