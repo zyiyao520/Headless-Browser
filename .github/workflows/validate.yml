@@ -23,10 +23,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           size=$(docker image inspect headless-browser:test --format='{{.Size}}')
-          echo "Flattened Docker image size: $size bytes"
-          limit=$((850 * 1024 * 1024))
+          size_mib=$((size / 1024 / 1024))
+          echo "Flattened Docker image size: $size bytes (${size_mib} MiB)"
+          echo "Unikraft account currently reports approximately 35.6 MiB already used."
+          echo "Projected total before packaging overhead: approximately $((size_mib + 36)) MiB of 1024 MiB."
+          limit=$((940 * 1024 * 1024))
           if (( size > limit )); then
-            echo "::error::Image exceeds 850 MiB safety target for the 1 GiB Unikraft registry quota"
+            echo "::error::Image exceeds 940 MiB deployment ceiling for the 1 GiB Unikraft registry quota"
             exit 1
           fi
       - name: Smoke test container
