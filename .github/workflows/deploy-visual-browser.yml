@@ -46,16 +46,40 @@ jobs:
         shell: bash
         run: |
           set +e
-          kraft cloud instance remove visual-chromium-cdp --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
-          for i in $(seq 1 24); do
+          # The persistent volume may still be mounted by either the previous
+          # headless baseline or an earlier visual deployment. Remove both
+          # possible owners before waiting for the volume to detach.
+          for instance in baseline-chromium-cdp-auth visual-chromium-cdp; do
+            kraft cloud instance remove "$instance" \
+              --metro "$UKC_METRO" --token "$UKC_TOKEN" >/dev/null 2>&1 || true
+          done
+
+          detached=0
+          for i in $(seq 1 36); do
             v=$(kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
             echo "$v"
-            echo "$v" | grep -q '"state":"mounted"' || break
+            if ! echo "$v" | grep -Fq '"state":"mounted"'; then
+              detached=1
+              break
+            fi
             sleep 5
           done
+          if (( detached == 0 )); then
+            echo "::error::Persistent volume remained mounted after removing old instances"
+            exit 1
+          fi
+
           if [[ "${{ inputs.cleanup_old_image }}" == "true" ]]; then
-            kraft cloud image delete voss/baseline-chromium-cdp-auth --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
-            kraft cloud image delete voss/visual-chromium-cdp --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+            images=$(kraft cloud image list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+            echo "$images"
+            for image in voss/baseline-chromium-cdp-auth voss/visual-chromium-cdp; do
+              if echo "$images" | grep -Fq "\"name\":\"$image\""; then
+                kraft cloud image delete "$image" \
+                  --metro "$UKC_METRO" --token "$UKC_TOKEN" || true
+              else
+                echo "Image $image does not exist; skipping deletion."
+              fi
+            done
             sleep 60
           fi
       - name: Ensure persistent volume
