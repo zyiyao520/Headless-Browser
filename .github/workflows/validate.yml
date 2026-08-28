@@ -72,7 +72,7 @@ jobs:
           grep -Fq "10000:8080/tls" .github/workflows/deploy.yml
           grep -Fq "chromium-cdp-auth-data:/app/data" .github/workflows/deploy.yml
           grep -Fq "COPY ./visual-entrypoint.sh /usr/bin/visual-entrypoint.sh" deploy/visual-cdp/Dockerfile
-          grep -Fq "/usr/bin/mkdir /usr/bin/sleep /usr/bin/cat" deploy/visual-cdp/Dockerfile
+          grep -Fq "/usr/bin/xkbcomp /usr/bin/mkdir /usr/bin/sleep /usr/bin/cat" deploy/visual-cdp/Dockerfile
           grep -Fq 'cmd: ["/usr/bin/wrapper.sh", "/usr/bin/visual-entrypoint.sh"]' deploy/visual-cdp/Kraftfile
           grep -Fq "timeout 30s kraft cloud instance logs" .github/workflows/deploy.yml
           grep -Fq "Wait for public endpoints" .github/workflows/deploy.yml
@@ -82,3 +82,6 @@ jobs:
           grep -Fq "exec /usr/bin/node /app/proxy.js" deploy/visual-cdp/visual-entrypoint.sh
           ! grep -Fq '| sed' deploy/visual-cdp/visual-entrypoint.sh
           grep -Fq 'pid=$!' deploy/visual-cdp/visual-entrypoint.sh
+          grep -Fq "x11-xkb-utils" deploy/visual-cdp/Dockerfile
+          grep -Fq "xkb-data" deploy/visual-cdp/Dockerfile
+          grep -Fq "/usr/share/X11/xkb" deploy/visual-cdp/Dockerfile
