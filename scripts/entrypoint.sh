@@ -76,6 +76,12 @@ start_bg cloakserve cloakserve "${CLOAK_ARGS[@]}"
 # the whole stack after the previous 60-second window.
 CDP_READY=0
 for attempt in $(seq 1 180); do
+  cloak_pid="$(cat /run/browser-stack/cloakserve.pid)"
+  if ! kill -0 "$cloak_pid" 2>/dev/null; then
+    echo "[fatal] cloakserve exited during initialization"
+    cat /data/logs/cloakserve.log 2>/dev/null || true
+    exit 1
+  fi
   if curl --connect-timeout 2 --max-time 5 -fsS \
       "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
     CDP_READY=1

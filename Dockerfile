@@ -32,7 +32,13 @@ RUN apt-get update && \
 # Install only the Python wrapper and CDP multiplexer. Do not bake the large
 # Chromium payload into the OCI/EroFS image because Hobby registry storage is
 # capped at 1 GiB. cloakserve downloads and verifies it on first start.
+ARG CLOAKBROWSER_SOURCE_REV=d6bad5de261bedf025280ace1d14e800aee13923
 RUN pip install --no-cache-dir 'cloakbrowser[serve]' && \
+    curl -fsSL \
+      "https://raw.githubusercontent.com/CloakHQ/CloakBrowser/${CLOAKBROWSER_SOURCE_REV}/bin/cloakserve" \
+      -o /usr/local/bin/cloakserve && \
+    chmod 0755 /usr/local/bin/cloakserve && \
+    /usr/local/bin/cloakserve --help >/dev/null 2>&1 || true; \
     find /usr/local/lib/python3.12/site-packages -type d \
       \( -name tests -o -name __pycache__ \) -prune -exec rm -rf '{}' + && \
     rm -rf /root/.cache /tmp/*
