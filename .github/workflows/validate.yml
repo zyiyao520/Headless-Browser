@@ -75,3 +75,6 @@ jobs:
           grep -Fq "/usr/bin/mkdir /usr/bin/sleep" deploy/visual-cdp/Dockerfile
           grep -Fq 'cmd: ["/usr/bin/wrapper.sh", "/usr/bin/visual-entrypoint.sh"]' deploy/visual-cdp/Kraftfile
           grep -Fq "timeout 30s kraft cloud instance logs" .github/workflows/deploy.yml
+          grep -Fq "Wait for public endpoints" .github/workflows/deploy.yml
+          grep -Fq '[ready] $name is listening on $port' deploy/visual-cdp/visual-entrypoint.sh
+          grep -Fq "exec /usr/bin/node /app/proxy.js" deploy/visual-cdp/visual-entrypoint.sh

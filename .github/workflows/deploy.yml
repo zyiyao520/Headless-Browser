@@ -117,6 +117,34 @@ jobs:
             --rollout remove_sequential \
             --rollout-wait 90s \
             --output json | tee "$GITHUB_WORKSPACE/visual-deployment.json"
+      - name: Wait for public endpoints
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fqdn=$(python3 -c "import json; print(json.load(open('visual-deployment.json'))['data']['instances'][0]['service_group']['domains'][0]['fqdn'])")
+          echo "Visual browser FQDN: $fqdn"
+          novnc_ready=0
+          cdp_ready=0
+          for attempt in $(seq 1 60); do
+            if curl --connect-timeout 2 --max-time 5 -fsS "https://${fqdn}/vnc.html" >/dev/null 2>&1; then
+              novnc_ready=1
+            fi
+            code=$(curl --connect-timeout 2 --max-time 5 -sS -o /tmp/cdp-health.out -w '%{http_code}' \
+              "https://${fqdn}:10000/json/version" || true)
+            if [[ "$code" == "401" ]]; then
+              cdp_ready=1
+            fi
+            echo "Readiness ${attempt}/60: noVNC=${novnc_ready}, CDP-auth=${cdp_ready}, HTTP=${code}"
+            if (( novnc_ready == 1 && cdp_ready == 1 )); then
+              echo "Visual browser endpoints are ready"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Visual browser endpoints did not become ready"
+          cat /tmp/cdp-health.out 2>/dev/null || true
+          exit 1
+
       - name: Capture status and bounded logs
         if: always()
         shell: bash
