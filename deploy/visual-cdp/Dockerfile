@@ -77,7 +77,7 @@ RUN mkdir /home/tmp
 # copying only executables, their shared-library closure, and static assets.
 RUN git clone --depth 1 --branch v1.6.0 https://github.com/novnc/noVNC.git /opt/noVNC && \
     ln -sf /opt/noVNC/vnc.html /opt/noVNC/index.html && \
-    mkdir -p /visual-root && \
+    mkdir -p /visual-root/usr/lib /visual-root/usr/lib/x86_64-linux-gnu /visual-root/opt && \
     for bin in /usr/bin/Xvfb /usr/bin/x11vnc /usr/bin/openbox /usr/bin/python3 /usr/bin/websockify; do \
       mkdir -p "/visual-root$(dirname "$bin")"; cp -L "$bin" "/visual-root$bin"; \
       ldd "$bin" 2>/dev/null | awk '/=> \// {print $3} /^\// {print $1}' | while read -r lib; do \
