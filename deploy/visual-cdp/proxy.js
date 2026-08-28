@@ -256,7 +256,7 @@ function getDevtoolsPath() {
             res.on('end', () => {
                 try {
                     let obj = JSON.parse(output);
-                    console.log("debuggerUrl: " + obj.webSocketDebuggerUrl);
+                    console.log("Chromium debugger endpoint discovered");
                     devtoolsPath = obj.webSocketDebuggerUrl.replace(`ws://${cdp_host}:${cdp_port}`, "");
                     console.log("devtoolsPath: " + devtoolsPath);
                     resolve();
@@ -325,7 +325,7 @@ function runProxy() {
                 const tokenToRevoke = pathname.slice('/api/tokens/'.length);
                 const revoked = revokeToken(tokenToRevoke);
                 if (revoked) {
-                    console.log(`[Token] Revoked: ${tokenToRevoke.slice(0, 8)}...`);
+                    console.log("[Token] Revoked");
                     return sendJson(res, 200, { revoked: true });
                 }
                 return sendJson(res, 404, { error: 'Token not found' });
@@ -342,13 +342,13 @@ function runProxy() {
         }
 
         // --- Proxy to CDP ---
-        console.log("server request URL: " + req.url);
+        console.log("incoming authenticated proxy request");
         req.headers['host'] = `${cdp_host}:${cdp_port}`;
         proxy.web(req, res);
     });
 
     proxy.on('proxyReq', function(proxyReq, req, res) {
-        console.log("request URL: " + req.url);
+        console.log("request path: " + new URL(req.url, `http://${req.headers.host || 'localhost'}`).pathname);
     });
 
     //
@@ -356,7 +356,7 @@ function runProxy() {
     //
     proxy.on('proxyRes', function (proxyRes, req, res) {
         if (res.req.url.startsWith("/json")) {
-            console.log("URL: " + res.req.url);
+            console.log("CDP discovery response");
             const isHost = (element) => element == 'Host';
             host = res.req.rawHeaders[res.req.rawHeaders.findIndex(isHost)+1];
 
@@ -367,8 +367,8 @@ function runProxy() {
 
             modifyResponse(res, proxyRes, function (body) {
                 if (body) {
-                    console.log("debugger URL: " + body.webSocketDebuggerUrl);
-                    console.log(`new URL: wss://${host}/unikraft${tokenParam}`);
+                    console.log("rewriting Chromium debugger endpoint");
+                    console.log(`rewrote WebSocket URL for host: ${host}`);
                     devtoolsPath = body.webSocketDebuggerUrl.replace(`ws://${cdp_host}:${cdp_port}`, "");
                     console.log(`devtoolsPath: ${devtoolsPath}`);
                     body.webSocketDebuggerUrl = `wss://${host}/unikraft${tokenParam}`;
@@ -394,7 +394,7 @@ function runProxy() {
         console.log("before take (upgrade)");
         console.log("upgrade: devtoolsPath: " + devtoolsPath);
         sem.take(function() {
-            console.log("upgrade request URL: " + req.url);
+            console.log("authenticated WebSocket upgrade");
             req.url = devtoolsPath;
             proxy.ws(req, socket, head);
         });
@@ -410,7 +410,7 @@ function runProxy() {
         console.log('Server is running on port ' + port);
         console.log(`Token database: ${DB_PATH}`);
         if (BOOTSTRAP_ADMIN_TOKEN) {
-            console.log(`Bootstrap admin token: ${BOOTSTRAP_ADMIN_TOKEN.slice(0, 8)}...`);
+            console.log("Bootstrap admin token is configured");
         }
     });
 }
