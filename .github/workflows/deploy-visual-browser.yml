@@ -91,6 +91,14 @@ jobs:
           if ! echo "$j" | grep -Fq '"name":"chromium-cdp-auth-data"'; then
             kraft cloud volume create --name chromium-cdp-auth-data --size 256Mi --metro "$UKC_METRO" --token "$UKC_TOKEN"
           fi
+          ready=0
+          for i in $(seq 1 36); do
+            j=$(kraft cloud volume list -o json --metro "$UKC_METRO" --token "$UKC_TOKEN")
+            echo "$j"
+            if echo "$j" | grep -Eq '"state":"(available|idle)"'; then ready=1; break; fi
+            sleep 5
+          done
+          (( ready == 1 )) || { echo "::error::Volume is not attachable"; exit 1; }
       - name: Build and deploy visual browser
         working-directory: deploy/visual-cdp
         shell: bash

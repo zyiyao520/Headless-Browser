@@ -191,7 +191,7 @@ function readBody(req) {
 
 function startBrowser() {
     return new Promise((resolve, reject) => {
-        chromium.launch({headless: false, args: [`--remote-debugging-port=${cdp_port}`, "--v=2"],
+        chromium.launchPersistentContext('/app/data/profile', {headless: false, args: [`--remote-debugging-port=${cdp_port}`, "--v=2", "--no-sandbox", "--disable-dev-shm-usage"],
             logger: {
                 isEnabled: () => true,
                 log: (name, severity, message, args) => console.log(`${name} ${message}`)

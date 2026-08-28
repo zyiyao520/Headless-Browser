@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 export DISPLAY=:99
-mkdir -p /tmp/.X11-unix /data/profile
+mkdir -p /tmp/.X11-unix /app/data/profile
 Xvfb :99 -screen 0 1280x800x24 -ac -nolisten tcp > /tmp/xvfb.log 2>&1 &
 sleep 1
 openbox > /tmp/openbox.log 2>&1 &

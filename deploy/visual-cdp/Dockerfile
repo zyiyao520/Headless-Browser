@@ -32,7 +32,9 @@ RUN set -xe; \
         x11vnc \
         openbox \
         python3-websockify \
-        git \
+        libgtk-3-0 \
+        fonts-liberation \
+        fontconfig \
     ;
 
 RUN set -xe; \
@@ -71,14 +73,22 @@ RUN cd /root/.cache/ms-playwright/chromium-*/chrome-linux; \
     strip /usr/bin/node \
     ;
 
-RUN mkdir /home/tmp
+# The final service uses one headed Chromium only. Remove Playwright payloads
+# for Firefox, WebKit and Chromium headless-shell to stay within the 1 GiB
+# registry quota.
+RUN find /root/.cache/ms-playwright -mindepth 1 -maxdepth 1 -type d \
+      ! -name 'chromium-*' -exec rm -rf '{}' + && \
+    rm -rf /root/.cache/ms-playwright/chromium_headless_shell-* && \
+    mkdir /home/tmp
 
 # Visual desktop and noVNC assets. Keep the final scratch image small by
 # copying only executables, their shared-library closure, and static assets.
 RUN git clone --depth 1 --branch v1.6.0 https://github.com/novnc/noVNC.git /opt/noVNC && \
     ln -sf /opt/noVNC/vnc.html /opt/noVNC/index.html && \
     mkdir -p /visual-root/usr/lib /visual-root/usr/lib/x86_64-linux-gnu /visual-root/opt && \
-    for bin in /usr/bin/Xvfb /usr/bin/x11vnc /usr/bin/openbox /usr/bin/python3 /usr/bin/websockify; do \
+    chrome_bin=$(find /root/.cache/ms-playwright -path '*/chrome-linux/chrome' -type f | head -n 1) && \
+    test -n "$chrome_bin" && \
+    for bin in "$chrome_bin" /usr/bin/Xvfb /usr/bin/x11vnc /usr/bin/openbox /usr/bin/python3 /usr/bin/websockify; do \
       mkdir -p "/visual-root$(dirname "$bin")"; cp -L "$bin" "/visual-root$bin"; \
       ldd "$bin" 2>/dev/null | awk '/=> \// {print $3} /^\// {print $1}' | while read -r lib; do \
         mkdir -p "/visual-root$(dirname "$lib")"; cp -Ln "$lib" "/visual-root$lib" || true; \
@@ -86,8 +96,10 @@ RUN git clone --depth 1 --branch v1.6.0 https://github.com/novnc/noVNC.git /opt/
     done && \
     cp -a /usr/lib/python3* /visual-root/usr/lib/ && \
     cp -a /usr/lib/x86_64-linux-gnu/openbox /visual-root/usr/lib/x86_64-linux-gnu/ && \
-    mkdir -p /visual-root/etc/xdg /visual-root/usr/share && \
+    mkdir -p /visual-root/etc/xdg /visual-root/etc/fonts /visual-root/usr/share/fonts /visual-root/usr/share && \
     cp -a /etc/xdg/openbox /visual-root/etc/xdg/ && \
+    cp -a /etc/fonts/. /visual-root/etc/fonts/ && \
+    cp -a /usr/share/fonts/. /visual-root/usr/share/fonts/ && \
     cp -a /usr/share/openbox /visual-root/usr/share/ && \
     cp -a /opt/noVNC /visual-root/opt/
 
