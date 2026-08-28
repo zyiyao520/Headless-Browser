@@ -77,7 +77,7 @@ jobs:
           grep -Fq -- '-rfbauth /tmp/vnc.pass' deploy/visual-cdp/visual-entrypoint.sh
           ! grep -Fq -- '-nopw' deploy/visual-cdp/visual-entrypoint.sh
           grep -Fq "COPY ./visual-entrypoint.sh /usr/bin/visual-entrypoint.sh" deploy/visual-cdp/Dockerfile
-          grep -Fq "/usr/bin/xkbcomp /usr/bin/mkdir /usr/bin/sleep /usr/bin/cat" deploy/visual-cdp/Dockerfile
+          grep -Fq "/usr/bin/xkbcomp /usr/bin/mkdir /usr/bin/sleep /usr/bin/cat /usr/bin/chmod" deploy/visual-cdp/Dockerfile
           grep -Fq 'cmd: ["/usr/bin/wrapper.sh", "/usr/bin/visual-entrypoint.sh"]' deploy/visual-cdp/Kraftfile
           grep -Fq "timeout 30s kraft cloud instance logs" .github/workflows/deploy.yml
           grep -Fq "Wait for public endpoints" .github/workflows/deploy.yml
